@@ -92,16 +92,27 @@ class AnswerQueryTool(BaseTool):
             else document_content
         )
 
+        # Get the path from either pdf_path or path
+        path = metadata.get("pdf_path", metadata.get("path", "unknown"))
+        
+        # Get the page from either page_number or page
+        page = metadata.get("page_number", metadata.get("page"))
+        
+        # Get image path from either page_image, embedded_image, or image_path
+        image_path = metadata.get("page_image", 
+                               metadata.get("embedded_image", 
+                                        metadata.get("image_path")))
+
         source = Source(
             document_id=metadata.get("document_id", "unknown"),
-            path=metadata.get("path", "unknown"),
-            page=metadata.get("page"),
+            path=path,
+            page=page,
             chunk=metadata.get("chunk"),
             content_type=metadata.get("content_type", "text"),
             document_type=metadata.get("document_type", "unknown"),
             relevance_score=metadata.get("score", 0.0),
             snippet=snippet,
-            image_path=metadata.get("image_path"),
+            image_path=image_path,
             image_width=metadata.get("image_width"),
             image_height=metadata.get("image_height"),
         )
@@ -143,10 +154,11 @@ class AnswerQueryTool(BaseTool):
                 parsed_sources.append(parsed_source)
 
                 doc_type = metadata.get("document_type", "unknown")
-                path = metadata.get("path", "unknown")
-                page_info = (
-                    f" (page {metadata.get('page')})" if metadata.get("page") else ""
-                )
+                # Get path from either pdf_path or path
+                path = metadata.get("pdf_path", metadata.get("path", "unknown"))
+                # Get page from either page_number or page
+                page = metadata.get("page_number", metadata.get("page"))
+                page_info = f" (page {page})" if page else ""
 
                 source_context += (
                     f"\n--- Source from {doc_type} document: {path}{page_info} ---\n"

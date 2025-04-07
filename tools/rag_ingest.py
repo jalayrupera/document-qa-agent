@@ -213,7 +213,15 @@ class IngestDataTool(BaseTool):
                     "document_type": "pdf",
                     "total_pages": total_pages,
                     "has_ocr": bool(ocr_text.strip()),
-                    "has_regular_text": bool(regular_text.strip())
+                    "has_regular_text": bool(regular_text.strip()),
+                    "source": file_path,
+                    "source_type": "pdf",
+                    "source_page": page_num + 1,
+                    # Add these additional source-related fields for embedchain
+                    "url": file_path,
+                    "title": f"{os.path.basename(file_path)} - Page {page_num + 1}",
+                    "source_id": f"{document_id}_page_{page_num + 1}",
+                    "chunk_id": f"{document_id}_page_{page_num + 1}_text"
                 }
                 
                 # Add any additional metadata from input
@@ -252,7 +260,16 @@ class IngestDataTool(BaseTool):
                             "image_index": img_index,
                             "image_width": image.width,
                             "image_height": image.height,
-                            "is_embedded": True
+                            "is_embedded": True,
+                            "source": file_path,
+                            "source_type": "pdf",
+                            "source_page": page_num + 1,
+                            "source_image_index": img_index,
+                            # Add these additional source-related fields for embedchain
+                            "url": file_path,
+                            "title": f"{os.path.basename(file_path)} - Page {page_num + 1} - Image {img_index + 1}",
+                            "source_id": f"{document_id}_page_{page_num + 1}_image_{img_index + 1}",
+                            "chunk_id": f"{document_id}_page_{page_num + 1}_image_{img_index + 1}"
                         }
                         
                         # Add any additional metadata from input

@@ -75,11 +75,19 @@ def display_formatted_answer(answer: str, sources: Optional[List[Dict]] = None) 
     print("-" * width)
 
     for i, source in enumerate(sources):
-        path = source.get("path", "Unknown")
-        page = source.get("page")
+        # Get the path from either pdf_path or path
+        path = source.get("pdf_path", source.get("path", "Unknown"))
+        
+        # Get the page from either page_number or page
+        page = source.get("page_number", source.get("page"))
+        
+        # Get image path from either page_image, embedded_image, or image_path
+        image_path = source.get("page_image", 
+                             source.get("embedded_image", 
+                                     source.get("image_path")))
+                                     
         content_type = source.get("content_type", "text")
         snippet = source.get("snippet", "")
-        image_path = source.get("image_path")
 
         print(f"\n[{i + 1}]")
 
