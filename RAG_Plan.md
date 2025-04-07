@@ -7,7 +7,7 @@
 1.  **Project Setup:**
     *   Script file: `rag_crew.py`.
     *   Imports: `crewai` (Agent, Task, Crew, Process), `crewai_tools` (BaseTool), `embedchain` (App), `langchain_google_genai` (ChatGoogleGenerativeAI), `pymupdf` (fitz), `python-docx` (docx), `os`, `io`, `PIL` (Pillow), `pydantic` (BaseModel, Field), `json`, `typing` (List, Dict, Any).
-    *   Environment Setup: Requires `GOOGLE_API_KEY` environment variable.
+    *   Environment Setup: Requires `GEMINI_API_KEY` environment variable.
 
 2.  **Pydantic Models:**
     *   Define data structures for requests and responses:
@@ -38,14 +38,14 @@
 
 3.  **Custom PDF Processor:**
     *   Function `process_pdf(file_path, gemini_llm)`:
-        *   Takes file path and the initialized `gemini-1.5-flash` model instance.
+        *   Takes file path and the initialized `gemini-2.0-flash` model instance.
         *   Uses `pymupdf` (`fitz`) for text and image extraction per page.
         *   Collects all images from the PDF.
         *   Attempts to batch image description generation using the `gemini_llm` instance. Handle potential errors per image.
         *   Returns a list of data chunks (text and image descriptions) with metadata (`source`, `page_index`, `content_type`).
 
 4.  **LLM & EmbedChain Initialization:**
-    *   Initialize `gemini_llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=os.environ["GOOGLE_API_KEY"])`.
+    *   Initialize `gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", GEMINI_API_KEY=os.environ["GEMINI_API_KEY"])`.
     *   Initialize `app = App.from_config(...)` using `gemini_llm` and a Google embedder (e.g., `models/embedding-001`).
 
 5.  **Tool Implementation (`crewai_tools.BaseTool`):**
@@ -103,7 +103,7 @@
         python-docx
         pydantic
         ```
-    *   Note about `GOOGLE_API_KEY` and API costs.
+    *   Note about `GEMINI_API_KEY` and API costs.
 
 **Mermaid Diagram (Conceptual):**
 
@@ -172,3 +172,71 @@ flowchart TD
     style PDFProc fill:#ccf,stroke:#333,stroke-width:2px
     style GeminiFlash fill:#fcc,stroke:#333,stroke-width:1px
 ```
+
+## Image Processing in PDF Documents
+
+This document outlines how our RAG system handles images within PDF documents.
+
+### Image Extraction Process
+
+1. **Extract images from PDF pages**:
+   - For each page in a PDF document, we use PyMuPDF to extract all images.
+   - We capture each image's position and reference information.
+
+2. **Image Processing**:
+   - Convert the extracted image bytes to a PIL Image object.
+   - Convert to RGB format if needed for consistency.
+   - Generate a base64 representation of the image for storage.
+
+3. **Generate Image Descriptions**:
+   - Use Gemini 1.5 Flash to analyze the image and generate a detailed description.
+   - The prompt asks Gemini to "Describe this image in detail. Focus on what is shown in the image."
+   - This description becomes the primary content that will be embedded and later retrieved.
+
+4. **Store Image with Rich Metadata**:
+   - Store the image description as the main content.
+   - Store the following metadata with each image:
+     - `document_id`: Unique identifier for the parent document
+     - `path`: Original file path
+     - `page`: Page number where the image appears
+     - `image_index`: Position of the image on the page
+     - `content_type`: Set to "image"
+     - `document_type`: Set to "pdf"
+     - `image_data`: Base64-encoded image data
+     - `image_width`: Width of the image in pixels
+     - `image_height`: Height of the image in pixels
+     - `image_format`: Image format (JPEG, PNG, etc.)
+
+### Query Process with Images
+
+1. **Image Source Retrieval**:
+   - When a query is relevant to image content, the system retrieves the image description.
+   - Along with the description, it returns the metadata including the base64-encoded image data.
+
+2. **Presenting Images in Results**:
+   - The query results include both text sources and image sources.
+   - For image sources, the system provides:
+     - The image description
+     - The original document path and page number
+     - The image data itself (in base64 format)
+     - Image dimensions
+
+### Benefits of This Approach
+
+1. **Multimodal Understanding**: By extracting both text and images, we capture the complete document content.
+
+2. **Rich Context**: Image descriptions provide context that might not be present in the surrounding text.
+
+3. **Visual + Textual Retrieval**: Queries can retrieve information based on both textual content and visual elements.
+
+4. **Preserving Visual Information**: By storing the image data in metadata, we maintain access to the original visual content.
+
+### Implementation Details
+
+The implementation follows these steps:
+
+1. `_process_pdf()` function in `tools/rag_ingest.py` handles the image extraction and processing.
+2. `_image_to_base64()` helper function converts PIL Images to base64 strings for storage.
+3. Images and their descriptions are stored in the embedchain database with detailed metadata.
+4. `AnswerQueryTool` in `tools/rag_query.py` extends the `Source` model to include image data.
+5. Query results can display image information when images are part of the retrieved sources.

@@ -1,8 +1,13 @@
 crewai
-crewai_tools
+langchain
+langchain-google-genai
 embedchain
-chromadb
 PyMuPDF
 Pillow
 python-docx
 pydantic
+python-dotenv
+chromadb
+langchain-text-splitters
+google-generativeai
+google.genai
