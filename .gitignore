@@ -51,3 +51,5 @@ coverage.xml
 *.log
 *.DS_Store
 .env
+
+*pdf
