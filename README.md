@@ -79,15 +79,6 @@ A Retrieval-Augmented Generation (RAG) system for querying documents with natura
 - Document chunks and embeddings are stored in a local ChromaDB database in the `db` directory
 - Extracted images are saved to `db/images` with a structured naming convention
 
-## Troubleshooting
-
-- If you encounter GPU-related errors, this is likely because PyMuPDF is attempting to use GPU acceleration. You can disable this by adding `export PYMUPDF_NOGIL=1` before running the application.
-- If you're getting API key errors, make sure your Gemini API key is correctly set in the `.env` file or provided through the web interface.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details. 
