@@ -144,13 +144,42 @@ class IngestDataTool(BaseTool):
 
         return ""
 
+    def _convert_page_to_image(self, page, zoom=2.0):
+        """Convert a PDF page to a high-resolution image."""
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img_data = pix.tobytes("png")
+        return Image.open(BytesIO(img_data))
+
+    def _perform_ocr_with_gemini(self, image: Image.Image, client) -> str:
+        """Perform OCR on an image using Gemini and return the extracted text."""
+        try:
+            prompt = """
+            Please extract all text from this image. Include:
+            1. All visible text in the image
+            2. Maintain the original formatting and layout as much as possible
+            3. Include any headers, footers, or marginal text
+            4. Preserve any special characters or symbols
+            
+            Return ONLY the extracted text, without any additional commentary or description.
+            """
+            
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=[prompt, image]
+            )
+            return response.text.strip() if response.text else ""
+        except Exception as e:
+            print(f"Error performing OCR with Gemini: {e}")
+            return ""
+
     def _process_pdf(
         self, file_path: str, metadata: Dict[str, Any]
     ) -> Tuple[str, List[Dict[str, Any]]]:
         ec_app = self._get_embedchain_app()
-
         document_chunks = []
         document_id = os.path.basename(file_path)
+        client = self._init_gemini_llm()
 
         try:
             pdf_document = fitz.open(file_path)
@@ -158,57 +187,77 @@ class IngestDataTool(BaseTool):
 
             for page_num in range(total_pages):
                 page = pdf_document[page_num]
-                text = self._extract_text_from_page(page)
+                
+                # Convert page to image
+                page_image = self._convert_page_to_image(page)
+                
+                # Save the page image
+                page_image_path = self._save_image_to_folder(page_image, document_id, page_num, 0)
+                
+                # Perform OCR using Gemini
+                ocr_text = self._perform_ocr_with_gemini(page_image, client)
+                
+                # Get regular text extraction as backup
+                regular_text = self._extract_text_from_page(page)
+                
+                # Combine OCR text and regular text
+                combined_text = f"{ocr_text}\n{regular_text}".strip()
+                
+                # Create mandatory metadata
+                page_metadata = {
+                    "document_id": document_id,
+                    "pdf_path": file_path,
+                    "page_number": page_num + 1,
+                    "page_image": page_image_path,
+                    "content_type": "text",
+                    "document_type": "pdf",
+                    "total_pages": total_pages,
+                    "has_ocr": bool(ocr_text.strip()),
+                    "has_regular_text": bool(regular_text.strip())
+                }
+                
+                # Add any additional metadata from input
+                if metadata:
+                    page_metadata.update(metadata)
 
-                if not text.strip():
-                    continue
+                if combined_text:
+                    ec_app.add(combined_text, metadata=page_metadata)
+                    document_chunks.append(page_metadata)
 
-                page_metadata = metadata.copy() if metadata else {}
-                page_metadata.update(
-                    {
-                        "document_id": document_id,
-                        "path": file_path,
-                        "page": page_num + 1,
-                        "document_type": "pdf",
-                        "content_type": "text",
-                    }
-                )
-
-                ec_app.add(text, metadata=page_metadata)
-                document_chunks.append(page_metadata)
-
+                # Process embedded images in the page
                 images = page.get_images(full=True)
-
                 for img_index, img_info in enumerate(images):
                     try:
                         xref = img_info[0]
                         base_image = pdf_document.extract_image(xref)
                         image_bytes = base_image["image"]
-
                         image = Image.open(BytesIO(image_bytes))
 
                         if image.width < 50 or image.height < 50:
                             continue
 
-                        # Save image to folder instead of converting to base64
-                        image_path = self._save_image_to_folder(image, document_id, page_num, img_index)
+                        # Save embedded image
+                        image_path = self._save_image_to_folder(image, document_id, page_num, img_index + 1)
 
-                        image_metadata = metadata.copy() if metadata else {}
-                        image_metadata.update(
-                            {
-                                "document_id": document_id,
-                                "path": file_path,
-                                "page": page_num + 1,
-                                "document_type": "pdf",
-                                "content_type": "image",
-                                "image_index": img_index,
-                                "image_path": image_path,  # Store path instead of base64 data
-                                "image_width": image.width,
-                                "image_height": image.height,
-                            }
-                        )
-
-                        client = self._init_gemini_llm() # Get client instance
+                        # Create mandatory metadata for embedded image
+                        image_metadata = {
+                            "document_id": document_id,
+                            "pdf_path": file_path,
+                            "page_number": page_num + 1,
+                            "page_image": page_image_path,
+                            "embedded_image": image_path,
+                            "content_type": "image",
+                            "document_type": "pdf",
+                            "total_pages": total_pages,
+                            "image_index": img_index,
+                            "image_width": image.width,
+                            "image_height": image.height,
+                            "is_embedded": True
+                        }
+                        
+                        # Add any additional metadata from input
+                        if metadata:
+                            image_metadata.update(metadata)
 
                         prompt = """
                         Describe the image in detail. Include:
@@ -220,12 +269,10 @@ class IngestDataTool(BaseTool):
                         """
 
                         try:
-                            # Pass the PIL image object directly using client.models
                             response = client.models.generate_content(
                                 model='gemini-2.0-flash',
                                 contents=[prompt, image]
                             )
-                            # Access the text part of the response
                             description = response.text if response.text else ""
                             description = description.strip()
 
@@ -233,11 +280,11 @@ class IngestDataTool(BaseTool):
                                 ec_app.add(description, metadata=image_metadata)
                                 document_chunks.append(image_metadata)
                         except Exception as e:
-                             print(f"Error generating image description: {e}") # Add logging
-                             pass
+                            print(f"Error generating image description: {e}")
+                            pass
                     except Exception as e:
-                         print(f"Error processing image {img_index}: {e}") # Add logging
-                         pass
+                        print(f"Error processing embedded image {img_index}: {e}")
+                        pass
 
             return document_id, document_chunks
 
