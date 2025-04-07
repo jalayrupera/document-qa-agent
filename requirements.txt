@@ -1,0 +1,8 @@
+crewai
+crewai_tools
+embedchain
+chromadb
+PyMuPDF
+Pillow
+python-docx
+pydantic
