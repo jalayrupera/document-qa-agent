@@ -1,112 +1,92 @@
-# Document RAG System
+# Document QA Agent
 
-An advanced document question-answering system using Retrieval-Augmented Generation (RAG) with CrewAI and EmbedChain.
+A Retrieval-Augmented Generation (RAG) system for querying documents with natural language questions. This system processes documents (PDF, DOCX, TXT, MD), extracts text and images, and enables semantic search and question answering based on the document content.
 
 ## Features
 
-- **Multi-Format Document Processing**: Supports PDF, DOCX, TXT, and MD files
-- **Image Extraction & Description**: Automatically extracts images from PDFs and generates descriptions
-- **Semantic Search**: Find relevant information across your document collection
-- **Rich Metadata**: Maintains detailed information about document sources
-- **Interactive Query Interface**: Natural language question answering with source citations
+- Document ingestion with support for PDF, DOCX, TXT, and Markdown files
+- Image extraction and analysis from documents
+- Text chunking and embedding for efficient retrieval
+- Natural language querying with source citations
+- Web interface built with Streamlit
+- Docker support for easy deployment
 
-## Project Structure
+## Requirements
 
-```
-.
-├── main.py               # Main application script with interactive mode
-├── tools/                # Core RAG components
-│   ├── __init__.py       # Package initialization
-│   ├── rag_ingest.py     # Document ingestion tool
-│   └── rag_query.py      # Query answering tool
-├── RAG_Plan.md           # Documentation of image extraction process
-├── requirements.txt      # Project dependencies
-├── .env                  # Environment variables (create from .env.example)
-└── sample_docs/          # Directory for sample documents
-```
+- Python 3.10+
+- Google Gemini API key
 
-## Setup
+## Local Setup
 
-1. Create a virtual environment and activate it:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/document-qa-agent.git
+   cd document-qa-agent
+   ```
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# OR
-.venv\Scripts\activate     # Windows
-```
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-2. Install dependencies:
+3. Create a `.env` file with your API key:
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   ```
 
-```bash
-pip install -r requirements.txt
-```
+4. Run the application:
+   ```bash
+   streamlit run app.py
+   ```
 
-3. Copy `.env.example` to `.env` and add your Google API key:
+## Docker Setup
 
-```
-GEMINI_API_KEY=your_GEMINI_API_KEY_here
-```
+1. Make sure Docker and Docker Compose are installed on your system.
 
-You can get a Google API key from https://makersuite.google.com/app/apikey.
+2. Create a `.env` file with your API key:
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   ```
+
+3. Build and start the container:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. Access the application at http://localhost:8501
+
+5. To stop the application:
+   ```bash
+   docker-compose down
+   ```
 
 ## Usage
 
-Run the interactive mode:
+1. **Upload Documents**: 
+   - Go to the "Upload Documents" tab
+   - Select one or more documents to upload (PDF, DOCX, TXT, MD)
+   - Click "Process Documents" to ingest them into the knowledge base
 
-```bash
-python main.py
-```
+2. **Ask Questions**:
+   - Go to the "Ask Questions" tab
+   - Enter your question about the document content
+   - Click "Submit Question" to get an answer with source citations
 
-The application provides two main functions:
+## Data Storage
 
-### 1. Process Documents
+- Document chunks and embeddings are stored in a local ChromaDB database in the `db` directory
+- Extracted images are saved to `db/images` with a structured naming convention
 
-When in "process" mode, you can add documents to the knowledge base:
+## Troubleshooting
 
-- Enter the path to a document (PDF, DOCX, TXT, MD)
-- The system will process and store the document with metadata
-- Images from PDFs will be extracted, described, and stored
+- If you encounter GPU-related errors, this is likely because PyMuPDF is attempting to use GPU acceleration. You can disable this by adding `export PYMUPDF_NOGIL=1` before running the application.
+- If you're getting API key errors, make sure your Gemini API key is correctly set in the `.env` file or provided through the web interface.
 
-### 2. Query Documents
+## Contributing
 
-When in "query" mode, you can ask questions about the processed documents:
-
-- Enter a natural language question
-- The system will search for relevant information and generate an answer
-- The answer will include citations to the source documents
-
-## Technical Implementation
-
-### Document Ingestion Process
-
-1. **Document Loading**: Files are loaded based on their type (PDF, DOCX, TXT, MD)
-2. **Text Extraction**: Content is extracted and split into appropriate chunks
-3. **Image Processing**: For PDFs, images are extracted and converted to base64
-4. **Description Generation**: Gemini 1.5 Flash generates descriptions for images
-5. **Metadata Tagging**: Chunks are stored with detailed metadata
-6. **Embedding Generation**: Text is vectorized for semantic search
-
-### Query Process
-
-1. **Query Processing**: User questions are analyzed
-2. **Relevant Document Retrieval**: The system finds related chunks from the knowledge base
-3. **Context Building**: Retrieved chunks are used to build a prompt context
-4. **Answer Generation**: Gemini 1.5 Flash generates a comprehensive answer based on the context
-5. **Source Citation**: The system provides citations to the original documents
-
-## Dependencies
-
-- crewai: Agent orchestration framework
-- langchain: LLM integration
-- langchain-google-genai: Gemini model integration
-- embedchain: Vector database and embedding
-- PyMuPDF: PDF processing
-- python-docx: DOCX processing
-- Pillow: Image processing
-- pydantic: Data validation
-- python-dotenv: Environment variable management
-- chromadb: Vector database
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 

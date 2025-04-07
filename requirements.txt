@@ -1,6 +1,4 @@
 crewai
-langchain
-langchain-google-genai
 embedchain
 PyMuPDF
 Pillow
@@ -11,3 +9,4 @@ chromadb
 langchain-text-splitters
 google-generativeai
 google.genai
+streamlit

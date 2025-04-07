@@ -1,0 +1,30 @@
+services:
+  document-qa:
+    build: .
+    container_name: document-qa-agent
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./db:/app/db
+      - ./uploads:/app/uploads
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - document-qa-network
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  document-qa-network:
+    driver: bridge
