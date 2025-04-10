@@ -104,7 +104,7 @@ def initialize_tools_and_agents():
     """Initialize the LLM, tools and agents for document processing and querying."""
     try:
         llm = LLM(
-            model="gemini-2.0-flash",
+            model="google/gemini-2.0-flash",
             temperature=0.5,
             api_key=os.environ.get("GEMINI_API_KEY", ""),
         )
