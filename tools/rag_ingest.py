@@ -3,6 +3,9 @@ import json
 import os
 from io import BytesIO
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
+import requests
+from urllib.parse import urlparse
+import tempfile
 
 import docx
 import fitz
@@ -35,6 +38,7 @@ class IngestDataTool(BaseTool):
 
     CHUNK_SIZE: ClassVar[int] = 10000
     CHUNK_OVERLAP: ClassVar[int] = 100
+    SUPPORTED_EXTENSIONS: ClassVar[List[str]] = [".pdf", ".docx", ".txt", ".md"]
     text_splitter: Optional[RecursiveCharacterTextSplitter] = Field(default=None)
 
     def __init__(self):
@@ -402,44 +406,85 @@ class IngestDataTool(BaseTool):
         else:
             return self._process_text_file(file_path, metadata)
 
+    def _is_valid_url(self, url: str) -> bool:
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except:
+            return False
+
+    def _download_file_from_url(self, url: str) -> Tuple[str, str]:
+        """
+        Download a file from a URL and return the temporary file path and file extension.
+        Raises ValueError if the file type is not supported.
+        """
+        if not self._is_valid_url(url):
+            raise ValueError("Invalid URL provided")
+
+        # Get the file extension from the URL
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        file_extension = os.path.splitext(path)[1].lower()
+
+        if file_extension not in self.SUPPORTED_EXTENSIONS:
+            raise ValueError(f"Unsupported file type: {file_extension}. Supported types are: {', '.join(self.SUPPORTED_EXTENSIONS)}")
+
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            # Create a temporary file with the correct extension
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        tmp_file.write(chunk)
+                return tmp_file.name, file_extension
+        except requests.RequestException as e:
+            raise ValueError(f"Failed to download file from URL: {str(e)}")
+
+    def _process_url(self, url: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, List[Dict[str, Any]]]:
+        """Process a document from a URL."""
+        try:
+            tmp_path, file_extension = self._download_file_from_url(url)
+            try:
+                result = self._process_file(tmp_path, metadata)
+                return result
+            finally:
+                # Clean up the temporary file
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        except Exception as e:
+            raise ValueError(f"Error processing URL {url}: {str(e)}")
+
     def _run(self, request_json: str) -> str:
         try:
-            request_data = json.loads(request_json)
-            request = IngestRequest(**request_data)
-
+            request = IngestRequest.model_validate_json(request_json)
             processed_files = []
             document_ids = []
-            errors = {}
             total_chunks = 0
+            errors = {}
 
             for path in request.paths:
                 try:
-                    document_id, chunks = self._process_file(path, request.metadata)
-
+                    if self._is_valid_url(path):
+                        doc_id, chunks = self._process_url(path, request.metadata)
+                    else:
+                        doc_id, chunks = self._process_file(path, request.metadata)
+                    
                     processed_files.append(path)
-                    document_ids.append(document_id)
+                    document_ids.append(doc_id)
                     total_chunks += len(chunks)
-
-                except Exception as file_error:
-                    errors[path] = str(file_error)
+                except Exception as e:
+                    errors[path] = str(e)
 
             response = IngestResponse(
-                status="completed",
+                status="completed" if not errors else "completed_with_errors",
                 processed_files=processed_files,
                 document_ids=document_ids,
                 chunks_count=total_chunks,
                 errors=errors if errors else None,
             )
 
-            return json.dumps(response.model_dump())
-
+            return response.model_dump_json()
         except Exception as e:
-            error_response = IngestResponse(
-                status="failed",
-                processed_files=[],
-                document_ids=[],
-                chunks_count=0,
-                errors={"general_error": str(e)},
-            )
-
-            return json.dumps(error_response.model_dump())
+            return json.dumps({"status": "failed", "error": str(e)})

@@ -8,6 +8,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Dict
+from datetime import datetime
 
 import streamlit as st
 from crewai import LLM, Agent, Task
@@ -146,13 +147,28 @@ def initialize_tools_and_agents():
 def process_document(file_path: str, ingestion_agent: Agent) -> Dict:
     """Process a document using the ingestion agent."""
     doc_type = get_document_type(file_path)
+    
+    # Check if the path is a URL
+    is_url = file_path.startswith(('http://', 'https://'))
+    
+    # Create metadata with appropriate timestamp
+    metadata = {
+        "source_type": doc_type,
+    }
+    
+    # Only try to get file stats for local files, not URLs
+    if not is_url:
+        try:
+            metadata["processed_at"] = str(Path(file_path).stat().st_mtime)
+        except Exception:
+            metadata["processed_at"] = str(datetime.now())
+    else:
+        metadata["processed_at"] = str(datetime.now())
+        metadata["source"] = "url"
 
     ingest_request = {
         "paths": [file_path],
-        "metadata": {
-            "source_type": doc_type,
-            "processed_at": str(Path(file_path).stat().st_mtime),
-        },
+        "metadata": metadata,
     }
 
     try:
@@ -242,50 +258,129 @@ tab1, tab2 = st.tabs(["Upload Documents", "Ask Questions"])
 with tab1:
     st.header("Upload Documents")
 
+    # File upload section
+    st.subheader("Upload Local Files")
     uploaded_files = st.file_uploader(
         "Choose files to upload (PDF, DOCX, TXT, MD)",
         accept_multiple_files=True,
         type=["pdf", "docx", "txt", "md"],
     )
 
-    if uploaded_files and st.button("Process Documents", key="process_docs"):
+    # URL input section
+    st.subheader("Add Document URLs")
+    
+    # Initialize session state for URLs if not exists
+    if "urls" not in st.session_state:
+        st.session_state.urls = []
+    
+    # URL input form
+    with st.form(key="url_form"):
+        url_input = st.text_input(
+            "Enter document URL (PDF, DOCX, TXT, MD)",
+            placeholder="https://example.com/document.pdf"
+        )
+        add_url_button = st.form_submit_button("Add URL")
+        
+        if add_url_button and url_input:
+            if url_input not in st.session_state.urls:
+                st.session_state.urls.append(url_input)
+                st.success(f"Added URL: {url_input}")
+            else:
+                st.warning("This URL has already been added")
+
+    # Display added URLs
+    if st.session_state.urls:
+        st.write("URLs to process:")
+        for i, url in enumerate(st.session_state.urls):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"{i+1}. {url}")
+            with col2:
+                if st.button("Remove", key=f"remove_{i}"):
+                    st.session_state.urls.pop(i)
+                    st.rerun()
+        
+        if st.button("Clear All URLs"):
+            st.session_state.urls = []
+            st.rerun()
+
+    # Process button
+    if (uploaded_files or st.session_state.urls) and st.button("Process Documents", key="process_docs"):
         progress_bar = st.progress(0)
         status_text = st.empty()
-        total_files = len(uploaded_files)
+        
+        # Calculate total items to process
+        total_files = len(uploaded_files) if uploaded_files else 0
+        total_urls = len(st.session_state.urls) if st.session_state.urls else 0
+        total_items = total_files + total_urls
+        processed_items = 0
 
-        for i, uploaded_file in enumerate(uploaded_files):
-            current_progress = i / total_files
-            progress_bar.progress(current_progress)
-            status_text.text(
-                f"Processing {uploaded_file.name}... ({i + 1}/{total_files})"
-            )
+        # Process uploaded files
+        if uploaded_files:
+            for i, uploaded_file in enumerate(uploaded_files):
+                current_progress = processed_items / total_items
+                progress_bar.progress(current_progress)
+                status_text.text(
+                    f"Processing {uploaded_file.name}... ({processed_items + 1}/{total_items})"
+                )
 
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=Path(uploaded_file.name).suffix
-            ) as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_path = tmp_file.name
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=Path(uploaded_file.name).suffix
+                ) as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    tmp_path = tmp_file.name
 
-            processing_message = st.empty()
-            processing_message.info(f"Running ingestion on {uploaded_file.name}...")
+                processing_message = st.empty()
+                processing_message.info(f"Running ingestion on {uploaded_file.name}...")
 
-            result = process_document(tmp_path, ingestion_agent)
+                result = process_document(tmp_path, ingestion_agent)
 
-            processing_message.empty()
+                processing_message.empty()
 
-            os.unlink(tmp_path)
+                os.unlink(tmp_path)
 
-            if result.get("status") == "completed":
-                st.success(f"Successfully processed {uploaded_file.name}")
-                st.json(result)
-            else:
-                st.error(f"Failed to process {uploaded_file.name}")
-                st.json(result)
+                if result.get("status") == "completed":
+                    st.success(f"Successfully processed {uploaded_file.name}")
+                    st.json(result)
+                else:
+                    st.error(f"Failed to process {uploaded_file.name}")
+                    st.json(result)
 
-            after_progress = (i + 1) / total_files
-            progress_bar.progress(after_progress)
+                processed_items += 1
+                after_progress = processed_items / total_items
+                progress_bar.progress(after_progress)
 
-        status_text.text(f"All {total_files} documents processed!")
+        # Process URLs
+        if st.session_state.urls:
+            for url in st.session_state.urls:
+                current_progress = processed_items / total_items
+                progress_bar.progress(current_progress)
+                status_text.text(
+                    f"Processing URL: {url}... ({processed_items + 1}/{total_items})"
+                )
+
+                processing_message = st.empty()
+                processing_message.info(f"Running ingestion on URL: {url}...")
+
+                result = process_document(url, ingestion_agent)
+
+                processing_message.empty()
+
+                if result.get("status") == "completed":
+                    st.success(f"Successfully processed URL: {url}")
+                    st.json(result)
+                else:
+                    st.error(f"Failed to process URL: {url}")
+                    st.json(result)
+
+                processed_items += 1
+                after_progress = processed_items / total_items
+                progress_bar.progress(after_progress)
+
+        status_text.text(f"All {total_items} items processed!")
+        
+        # Clear the URLs after processing
+        st.session_state.urls = []
 
 with tab2:
     st.markdown('<p class="main-header">Ask Questions</p>', unsafe_allow_html=True)
