@@ -10,4 +10,6 @@ langchain-text-splitters
 google-generativeai
 google.genai
 streamlit
+torch
 sentence-transformers
+watchdog

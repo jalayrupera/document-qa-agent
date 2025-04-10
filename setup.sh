@@ -28,4 +28,4 @@ else
     echo "Please fill in the .env file with the necessary environment variables."
 fi
 
-echo "Setup completed successfully! The environment includes local development versions of composio and composio-crewai."
+echo "Setup completed successfully!"

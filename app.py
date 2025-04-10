@@ -1,3 +1,8 @@
+import os
+import torch
+os.environ['STREAMLIT_SERVER_FILE_WATCHER_TYPE'] = 'none'
+torch.classes.__path__ = []
+
 import json
 import os
 import tempfile
@@ -104,7 +109,7 @@ def initialize_tools_and_agents():
     """Initialize the LLM, tools and agents for document processing and querying."""
     try:
         llm = LLM(
-            model="google/gemini-2.0-flash",
+            model="gemini/gemini-2.0-flash",
             temperature=0.5,
             api_key=os.environ.get("GEMINI_API_KEY", ""),
         )
