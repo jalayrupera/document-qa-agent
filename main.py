@@ -15,7 +15,7 @@ from tools.rag_query import AnswerQueryTool
 dotenv.load_dotenv()
 
 GEMINI_MODEL = "gemini/gemini-2.0-flash"
-TEMPERATURE = 0.3
+TEMPERATURE = 0.5
 
 
 def get_document_type(path: str) -> str:
