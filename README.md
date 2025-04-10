@@ -1,10 +1,11 @@
 # Document QA Agent
 
-A Retrieval-Augmented Generation (RAG) system for querying documents with natural language questions. This system processes documents (PDF, DOCX, TXT, MD), extracts text and images, and enables semantic search and question answering based on the document content.
+A Retrieval-Augmented Generation (RAG) system for querying documents with natural language questions. This system processes documents (PDF, DOCX, TXT, MD) from local uploads or URLs, extracts text and images, and enables semantic search and question answering based on the document content.
 
 ## Features
 
 - Document ingestion with support for PDF, DOCX, TXT, and Markdown files
+- URL-based document ingestion for remote documents
 - Image extraction and analysis from documents
 - Text chunking and embedding for efficient retrieval
 - Natural language querying with source citations
@@ -66,7 +67,9 @@ A Retrieval-Augmented Generation (RAG) system for querying documents with natura
 
 1. **Upload Documents**: 
    - Go to the "Upload Documents" tab
-   - Select one or more documents to upload (PDF, DOCX, TXT, MD)
+   - **Local Files**: Select one or more documents to upload (PDF, DOCX, TXT, MD)
+   - **URL Documents**: Enter the URL of a document (PDF, DOCX, TXT, MD) and click "Add URL"
+   - You can add multiple URLs and remove them individually or clear all
    - Click "Process Documents" to ingest them into the knowledge base
 
 2. **Ask Questions**:
