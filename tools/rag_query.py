@@ -174,7 +174,7 @@ class AnswerQueryTool(BaseTool):
                 try:
                     hyde_request = {
                         "query": query,
-                        "context_length": 300,
+                        "context_length": 500,  # Use longer context
                         "output_format": "text",
                     }
                     expanded_query = hyde_rewriter._run(json.dumps(hyde_request))
@@ -281,12 +281,21 @@ class AnswerQueryTool(BaseTool):
                 client = self._init_gemini_llm()
                 try:
                     # Create the prompt for answer generation
-                    user_prompt = f"""Question: {original_query}
+                    user_prompt = f"""Question: {query}
 
 Sources:
 {source_context}
 
-Provide a clear, accurate, and comprehensive answer to the question using only the provided document sources. Use information directly from the sources and avoid making up information. If the sources don't contain enough information to fully answer the question, acknowledge the limitations."""
+Please provide an extremely comprehensive, detailed, and thorough answer to the question based solely on the provided document sources. Your answer should:
+
+1. Be extensive and informative, capturing all relevant information from the sources
+2. Include all important details, examples, and context from the documents
+3. Use direct quotes and specific information from the sources to support your answer
+4. Be well-structured with logical organization and clear transitions
+5. Include specific facts, figures, and data points mentioned in the sources when relevant
+6. Synthesize information from multiple sources when applicable
+
+The goal is to create the most complete and detailed answer possible while remaining accurate to the source material. If the sources don't contain enough information to fully answer the question, acknowledge the specific limitations and explain what additional information would be needed."""
 
                     # Generate content with the new GenAI client
                     response = client.models.generate_content(
@@ -308,7 +317,7 @@ Provide a clear, accurate, and comprehensive answer to the question using only t
                     # Fall back to embedchain answer if enhancement fails
 
             return QueryResult(
-                query=original_query, answer=answer, sources=parsed_sources
+                query=query, answer=answer, sources=parsed_sources
             )
 
         except Exception as e:

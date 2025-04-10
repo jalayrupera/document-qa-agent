@@ -104,7 +104,7 @@ def initialize_tools_and_agents():
     """Initialize the LLM, tools and agents for document processing and querying."""
     try:
         llm = LLM(
-            model="gemini-2.0-flash",
+            model="gemini/gemini-2.0-flash",
             temperature=0.5,
             api_key=os.environ.get("GEMINI_API_KEY", ""),
         )
@@ -179,36 +179,41 @@ def process_query(query: str, query_agent: Agent) -> Dict:
     """Process a query using the query agent."""
     query_request = {
         "queries": [query],
-        "max_sources": 5,
+        "max_sources": 8,
         "filters": {},
     }
 
     try:
         task = Task(
-            description=f"Answer this question: '{query}'. Use the following JSON input as a STRING when calling the Answer Query Tool: {json.dumps(query_request)}. IMPORTANT: Make sure to properly JSON-encode the request_json parameter as a string when using the tool.",
-            expected_output="JSON response with query results including answers and sources.",
+            description=f"Answer this question: '{query}'. Use the following JSON input as a STRING when calling the Answer Query Tool: {json.dumps(query_request)}. IMPORTANT: Make sure to properly JSON-encode the request_json parameter as a string when using the tool. DO NOT include the JSON result directly in your final answer - only return the answer text.",
+            expected_output="A comprehensive answer to the query based on document sources, without JSON formatting.",
             agent=query_agent,
         )
 
         result = query_agent.execute_task(task)
 
+        # Check if the response is JSON or plain text
         try:
             if "```" in result:
                 import re
-
                 match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", result)
                 if match:
                     result = match.group(1).strip()
 
-            result_dict = json.loads(result)
+            # Handle JSON formatting
+            if result.strip().startswith("{") and result.strip().endswith("}"):
+                result_dict = json.loads(result)
 
-            if "results" in result_dict and len(result_dict["results"]) > 0:
-                query_result = result_dict["results"][0]
-                return {
-                    "answer": query_result.get("answer", ""),
-                    "sources": query_result.get("sources", []),
-                }
-            return result_dict
+                if "results" in result_dict and len(result_dict["results"]) > 0:
+                    query_result = result_dict["results"][0]
+                    return {
+                        "answer": query_result.get("answer", ""),
+                        "sources": query_result.get("sources", []),
+                    }
+                return result_dict
+            else:
+                # If it's not JSON, return as plain text answer
+                return {"answer": result, "sources": []}
         except (json.JSONDecodeError, ValueError, TypeError):
             return {"answer": result, "sources": []}
     except Exception as e:

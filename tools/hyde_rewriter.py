@@ -61,7 +61,7 @@ class HydeRewriterTool(BaseTool):
 
         return genai.Client(api_key=api_key)
 
-    def rewrite_query(self, query: str, context_length: int = 300) -> str:
+    def rewrite_query(self, query: str, context_length: int = 500) -> str:
         """
         Rewrite a user query into hypothetical document content
 
@@ -74,11 +74,21 @@ class HydeRewriterTool(BaseTool):
         """
         client = self._init_gemini_client()
 
-        user_prompt = f"""Generate a document passage of approximately {context_length} words that would directly answer this question:
+        user_prompt = f"""Generate a highly detailed, comprehensive document passage of approximately {context_length} words that would thoroughly answer this question:
         
 Question: {query}
 
-The passage should be factual, informative, and written like an authoritative document on the subject."""
+The passage should:
+1. Be written in the style of an authoritative, scholarly document
+2. Include specific facts, figures, and technical details that would likely appear in a professional document
+3. Be extensive in coverage of the topic, exploring multiple relevant aspects
+4. Include domain-specific terminology and concepts
+5. Have a formal, informative tone
+6. Be structured with clear organization, as if extracted from a well-written document
+7. Provide specific examples, case studies, or evidence where appropriate
+8. Contain all necessary context to fully understand the topic
+
+Remember, this should resemble content from a real, high-quality reference document."""
 
         try:
             # Generate content according to the Google GenAI API documentation
