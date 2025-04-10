@@ -15,7 +15,7 @@ from tools.rag_query import AnswerQueryTool
 dotenv.load_dotenv()
 
 GEMINI_MODEL = "gemini/gemini-2.0-flash"
-TEMPERATURE = 0.5
+TEMPERATURE = 0.3
 
 
 def get_document_type(path: str) -> str:
@@ -39,20 +39,17 @@ def extract_json_from_response(result_str: str) -> Optional[Dict]:
         if match:
             result_str = match.group(1).strip()
 
-    # Try to clean leading/trailing JSON markers
-    result_str = result_str.strip()
-    if result_str.startswith('{"') and result_str.endswith('"}'):
-        parsing_methods = [
-            lambda s: json.loads(s),
-            lambda s: json.loads(s.strip()),
-            lambda s: ast.literal_eval(s),
-        ]
+    parsing_methods = [
+        lambda s: json.loads(s),
+        lambda s: json.loads(s.strip()),
+        lambda s: ast.literal_eval(s),
+    ]
 
-        for parse_method in parsing_methods:
-            try:
-                return parse_method(result_str)
-            except (json.JSONDecodeError, SyntaxError, ValueError):
-                continue
+    for parse_method in parsing_methods:
+        try:
+            return parse_method(result_str)
+        except (json.JSONDecodeError, SyntaxError, ValueError):
+            continue
 
     return None
 
@@ -200,8 +197,8 @@ def process_query(query: str, query_agent: Agent) -> Dict:
     query_json = json.dumps(query_request)
 
     query_task = Task(
-        description=f"Answer this question: '{query}'. Use the following JSON input as a STRING when calling the Answer Query Tool: {query_json}. IMPORTANT: Make sure to properly JSON-encode the request_json parameter as a string when using the tool. DO NOT include the JSON result directly in your final answer - only return the answer text.",
-        expected_output="A comprehensive answer to the query based on document sources, without JSON formatting.",
+        description=f"Answer this question: '{query}'. Use the following JSON input as a STRING when calling the Answer Query Tool: {query_json}. IMPORTANT: Make sure to properly JSON-encode the request_json parameter as a string when using the tool.",
+        expected_output="JSON response with query results including answers and sources.",
         agent=query_agent,
     )
 
@@ -226,7 +223,6 @@ def process_query(query: str, query_agent: Agent) -> Dict:
             }
         return parsed_result
     else:
-        # If JSON parsing fails, return the raw result
         return {"response": result_str, "sources": []}
 
 
