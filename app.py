@@ -179,7 +179,7 @@ def process_query(query: str, query_agent: Agent) -> Dict:
     """Process a query using the query agent."""
     query_request = {
         "queries": [query],
-        "max_sources": 8,
+        "max_sources": 5,
         "filters": {},
     }
 

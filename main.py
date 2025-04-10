@@ -190,7 +190,7 @@ def process_document(document_path: str, ingestion_agent: Agent) -> str:
 def process_query(query: str, query_agent: Agent) -> Dict:
     query_request = {
         "queries": [query],
-        "max_sources": 8,
+        "max_sources": 5,
         "filters": {},
     }
 

@@ -35,7 +35,7 @@ class QueryResult(BaseModel):
 
 class QueryRequest(BaseModel):
     queries: List[str] = Field(...)
-    max_sources: int = Field(3)
+    max_sources: int = Field(5)
     filters: Optional[Dict[str, Any]] = Field(None)
 
 
@@ -286,16 +286,15 @@ class AnswerQueryTool(BaseTool):
 Sources:
 {source_context}
 
-Please provide an extremely comprehensive, detailed, and thorough answer to the question based solely on the provided document sources. Your answer should:
+Please provide a concise, factual answer to the question based ONLY on the provided document sources. Your answer should:
 
-1. Be extensive and informative, capturing all relevant information from the sources
-2. Include all important details, examples, and context from the documents
-3. Use direct quotes and specific information from the sources to support your answer
-4. Be well-structured with logical organization and clear transitions
-5. Include specific facts, figures, and data points mentioned in the sources when relevant
-6. Synthesize information from multiple sources when applicable
+1. Be brief and to the point
+2. Include ONLY information that is directly found in the sources
+3. NOT embellish or add any information beyond what is explicitly stated in the sources
+4. Use direct quotes from the sources where appropriate
+5. Clearly indicate if the sources do not contain sufficient information to answer the question
 
-The goal is to create the most complete and detailed answer possible while remaining accurate to the source material. If the sources don't contain enough information to fully answer the question, acknowledge the specific limitations and explain what additional information would be needed."""
+Avoid unnecessarily lengthy explanations and focus on presenting the most relevant facts from the sources."""
 
                     # Generate content with the new GenAI client
                     response = client.models.generate_content(
