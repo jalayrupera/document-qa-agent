@@ -10,3 +10,4 @@ langchain-text-splitters
 google-generativeai
 google.genai
 streamlit
+sentence-transformers

@@ -2,11 +2,15 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-import google.genai as genai
-from google.genai import Client
+# Updated imports for Google Generative AI
+from google import genai
+from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
 from embedchain import App
-from pydantic import BaseModel, Field
+
+# Import new tools
+from tools.hyde_rewriter import HydeRewriterTool
+from tools.reranker import RerankerTool
 
 
 class Source(BaseModel):
@@ -40,18 +44,56 @@ class QueryResponse(BaseModel):
 
 
 class AnswerQueryTool(BaseTool):
+    """Tool to search and answer queries using the document knowledge base.
+
+    This tool integrates with the following components:
+    - Embedchain for vector retrieval
+    - Hypothetical Document Embeddings (HyDE) for query expansion
+    - Cross-encoder reranking for improving relevance
+    """
+
     name: str = "Answer Query Tool"
     description: str = "Tool to search and answer queries using the knowledge base"
 
     def __init__(self):
-        super().__init__(name="Answer Query Tool", description="Tool to search and answer queries using the knowledge base")
+        """Initialize the AnswerQueryTool with optional HyDE and reranker components."""
+        super().__init__(
+            name="Answer Query Tool",
+            description="Tool to search and answer queries using the knowledge base",
+        )
 
-    def _init_gemini_llm(self) -> Client:
-        """Initializes the Google Generative AI model."""
+        # Store helper tools in a dictionary for clean access
+        self._tools = {}  # Dictionary to store tool instances
+
+        # Initialize the HyDE rewriter tool
+        try:
+            self._tools["hyde_rewriter"] = HydeRewriterTool()
+            print("HyDE rewriter initialized successfully")
+        except Exception as e:
+            print(f"Warning: Failed to initialize HyDE rewriter: {e}")
+
+        # Initialize the reranker tool
+        try:
+            self._tools["reranker"] = RerankerTool()
+            print("Reranker initialized successfully")
+        except Exception as e:
+            print(f"Warning: Failed to initialize reranker: {e}")
+
+    def get_hyde_rewriter(self):
+        """Get the HyDE rewriter tool instance if available."""
+        return self._tools.get("hyde_rewriter")
+
+    def get_reranker(self):
+        """Get the reranker tool instance if available."""
+        return self._tools.get("reranker")
+
+    def _init_gemini_llm(self):
+        """Initializes the Google Generative AI client."""
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
 
+        # Create and return a proper client instance using the new API
         return genai.Client(api_key=api_key)
 
     def _get_embedchain_config(self) -> Dict[str, Any]:
@@ -94,14 +136,14 @@ class AnswerQueryTool(BaseTool):
 
         # Get the path from either pdf_path or path
         path = metadata.get("pdf_path", metadata.get("path", "unknown"))
-        
+
         # Get the page from either page_number or page
         page = metadata.get("page_number", metadata.get("page"))
-        
+
         # Get image path from either page_image, embedded_image, or image_path
-        image_path = metadata.get("page_image", 
-                               metadata.get("embedded_image", 
-                                        metadata.get("image_path")))
+        image_path = metadata.get(
+            "page_image", metadata.get("embedded_image", metadata.get("image_path"))
+        )
 
         source = Source(
             document_id=metadata.get("document_id", "unknown"),
@@ -124,9 +166,28 @@ class AnswerQueryTool(BaseTool):
     ) -> QueryResult:
         ec_app = self._get_embedchain_app()
 
-        gemini_llm = self._init_gemini_llm()
-
         try:
+            # Apply HyDE query expansion if available
+            original_query = query
+            hyde_rewriter = self.get_hyde_rewriter()
+            if hyde_rewriter is not None:
+                try:
+                    hyde_request = {
+                        "query": query,
+                        "context_length": 300,
+                        "output_format": "text",
+                    }
+                    expanded_query = hyde_rewriter._run(json.dumps(hyde_request))
+                    if expanded_query and expanded_query.strip():
+                        print("Query expanded with HyDE rewriter")
+                        # Use the expanded query for retrieval but keep original for final response
+                        query = expanded_query
+                except Exception as e:
+                    print(f"Error in HyDE query expansion: {e}")
+                    # Continue with original query if HyDE fails
+                    pass
+
+            # Execute query with filters
             if filters:
                 result = ec_app.query(query, citations=True, where=filters)
             else:
@@ -145,9 +206,58 @@ class AnswerQueryTool(BaseTool):
                 embedchain_answer = str(result)
                 citations = []
 
+            # Apply reranking if available
+            reranker = self.get_reranker()
+            if reranker is not None and citations:
+                try:
+                    # Prepare sources for reranking
+                    sources_for_reranking = []
+                    for source in citations:
+                        content, metadata = source
+                        sources_for_reranking.append(
+                            {
+                                "content": content,
+                                "metadata": metadata,
+                                "score": metadata.get("score", 0.0),
+                            }
+                        )
+
+                    # Prepare reranker request
+                    rerank_request = {
+                        "original_query": original_query,  # Use original query for relevance judgment
+                        "results": sources_for_reranking,
+                        "top_n": max_sources,
+                    }
+
+                    # Execute reranking
+                    rerank_result_json = reranker._run(json.dumps(rerank_request))
+                    rerank_result = json.loads(rerank_result_json)
+
+                    if (
+                        "reranked_results" in rerank_result
+                        and rerank_result["reranked_results"]
+                    ):
+                        print("Sources reranked successfully")
+                        # Transform reranked results back to expected format
+                        reranked_citations = []
+                        for item in rerank_result["reranked_results"]:
+                            content = item["content"]
+                            metadata = item["metadata"]
+                            # Add rerank score to metadata
+                            metadata["score"] = item["rerank_score"]
+                            reranked_citations.append((content, metadata))
+
+                        # Replace citations with reranked results
+                        citations = reranked_citations
+                except Exception as e:
+                    print(f"Error during reranking: {e}")
+                    # Continue with original citations if reranking fails
+                    pass
+
             parsed_sources = []
             source_context = ""
 
+            # Take only up to max_sources
             for source in citations[:max_sources]:
                 content, metadata = source
                 parsed_source = self._parse_source(source)
@@ -167,33 +277,39 @@ class AnswerQueryTool(BaseTool):
 
             answer = embedchain_answer
             if source_context:
-                prompt = f"""Based on the following information, please answer the question: "{query}"
-                
+                # Use the Gemini client to generate a comprehensive answer based on the sources
+                client = self._init_gemini_llm()
+                try:
+                    # Create the prompt for answer generation
+                    user_prompt = f"""Question: {original_query}
+
+Sources:
 {source_context}
 
-Generate a comprehensive, accurate answer based only on the information provided above.
-If the information doesn't contain a complete answer, acknowledge the limitations of what can be determined from the available sources.
-"""
-                # Generate content using the native client
-                response = gemini_llm.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=prompt
-                )
+Provide a clear, accurate, and comprehensive answer to the question using only the provided document sources. Use information directly from the sources and avoid making up information. If the sources don't contain enough information to fully answer the question, acknowledge the limitations."""
 
-                # Extract text from the response
-                llm_answer = response.text if response.text else ""
-                llm_answer = llm_answer.strip()
+                    # Generate content with the new GenAI client
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=[
+                            {"role": "user", "parts": [{"text": user_prompt}]},
+                        ],
+                    )
 
-                if llm_answer:
-                    answer = llm_answer
-            else:
-                answer = "No relevant information found to answer the query."
+                    # Use the generated response if available
+                    if (
+                        response
+                        and hasattr(response, "text")
+                        and response.text is not None
+                    ):
+                        answer = response.text.strip()
+                except Exception as e:
+                    print(f"Error enhancing answer with Gemini: {e}")
+                    # Fall back to embedchain answer if enhancement fails
 
-            query_result = QueryResult(
-                query=query, answer=answer, sources=parsed_sources
+            return QueryResult(
+                query=original_query, answer=answer, sources=parsed_sources
             )
-
-            return query_result
 
         except Exception as e:
             return QueryResult(
@@ -202,7 +318,39 @@ If the information doesn't contain a complete answer, acknowledge the limitation
 
     def _run(self, request_json: str) -> str:
         try:
-            request_data = json.loads(request_json)
+            # Input validation to ensure request_json is actually a string
+            if not isinstance(request_json, str):
+                error_msg = f"Invalid input type: expected string, got {type(request_json).__name__}"
+                print(f"Input error: {error_msg}")
+                error_response = QueryResponse(
+                    results=[
+                        QueryResult(
+                            query="Error",
+                            answer=f"Error processing request: {error_msg}. Please provide request_json as a properly formatted JSON string.",
+                            sources=[],
+                        )
+                    ]
+                )
+                return json.dumps(error_response.model_dump())
+
+            # Try to parse the JSON string
+            try:
+                request_data = json.loads(request_json)
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON format: {str(e)}"
+                print(f"JSON parse error: {error_msg}")
+                error_response = QueryResponse(
+                    results=[
+                        QueryResult(
+                            query="Error",
+                            answer=f"Error processing request: {error_msg}. Please provide a valid JSON string.",
+                            sources=[],
+                        )
+                    ]
+                )
+                return json.dumps(error_response.model_dump())
+
+            # Validate the request object
             request = QueryRequest(**request_data)
 
             results = []
@@ -220,11 +368,13 @@ If the information doesn't contain a complete answer, acknowledge the limitation
             return json.dumps(response.model_dump())
 
         except Exception as e:
+            error_msg = str(e)
+            print(f"Processing error: {error_msg}")
             error_response = QueryResponse(
                 results=[
                     QueryResult(
                         query="Error",
-                        answer=f"Error processing request: {str(e)}",
+                        answer=f"Error processing request: {error_msg}",
                         sources=[],
                     )
                 ]

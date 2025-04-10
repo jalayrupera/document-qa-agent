@@ -30,7 +30,7 @@ class IngestResponse(BaseModel):
 class IngestDataTool(BaseTool):
     name: str = Field(default="Ingest Data Tool")
     description: str = Field(default="Tool to ingest documents into the knowledge base")
-    
+
     model_config = {"arbitrary_types_allowed": True}
 
     CHUNK_SIZE: ClassVar[int] = 10000
@@ -38,7 +38,10 @@ class IngestDataTool(BaseTool):
     text_splitter: Optional[RecursiveCharacterTextSplitter] = Field(default=None)
 
     def __init__(self):
-        super().__init__(name="Ingest Data Tool", description="Tool to ingest documents into the knowledge base")
+        super().__init__(
+            name="Ingest Data Tool",
+            description="Tool to ingest documents into the knowledge base",
+        )
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.CHUNK_SIZE,
             chunk_overlap=self.CHUNK_OVERLAP,
@@ -51,9 +54,8 @@ class IngestDataTool(BaseTool):
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
-        
-        return genai.Client(api_key=api_key)
 
+        return genai.Client(api_key=api_key)
 
     def _get_embedchain_config(self) -> Dict[str, Any]:
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -84,23 +86,25 @@ class IngestDataTool(BaseTool):
         config = self._get_embedchain_config()
         return App.from_config(config=config)
 
-    def _save_image_to_folder(self, image: Image.Image, document_id: str, page_num: int, img_index: int) -> str:
+    def _save_image_to_folder(
+        self, image: Image.Image, document_id: str, page_num: int, img_index: int
+    ) -> str:
         """Save image to a folder and return the path."""
         # Create images directory if it doesn't exist
         images_dir = os.path.join("db", "images")
         os.makedirs(images_dir, exist_ok=True)
-        
+
         # Create document-specific subfolder
         doc_images_dir = os.path.join(images_dir, document_id)
         os.makedirs(doc_images_dir, exist_ok=True)
-        
+
         # Generate filename with page number and image index
-        filename = f"page_{page_num+1}_img_{img_index}.png"
+        filename = f"page_{page_num + 1}_img_{img_index}.png"
         image_path = os.path.join(doc_images_dir, filename)
-        
+
         # Save image
         image.save(image_path)
-        
+
         return image_path
 
     def _image_to_base64(self, image: Image.Image) -> str:
@@ -163,10 +167,9 @@ class IngestDataTool(BaseTool):
             
             Return ONLY the extracted text, without any additional commentary or description.
             """
-            
+
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=[prompt, image]
+                model="gemini-2.0-flash", contents=[prompt, image]
             )
             return response.text.strip() if response.text else ""
         except Exception as e:
@@ -187,22 +190,24 @@ class IngestDataTool(BaseTool):
 
             for page_num in range(total_pages):
                 page = pdf_document[page_num]
-                
+
                 # Convert page to image
                 page_image = self._convert_page_to_image(page)
-                
+
                 # Save the page image
-                page_image_path = self._save_image_to_folder(page_image, document_id, page_num, 0)
-                
+                page_image_path = self._save_image_to_folder(
+                    page_image, document_id, page_num, 0
+                )
+
                 # Perform OCR using Gemini
                 ocr_text = self._perform_ocr_with_gemini(page_image, client)
-                
+
                 # Get regular text extraction as backup
                 regular_text = self._extract_text_from_page(page)
-                
+
                 # Combine OCR text and regular text
                 combined_text = f"{ocr_text}\n{regular_text}".strip()
-                
+
                 # Create mandatory metadata
                 page_metadata = {
                     "document_id": document_id,
@@ -221,9 +226,9 @@ class IngestDataTool(BaseTool):
                     "url": file_path,
                     "title": f"{os.path.basename(file_path)} - Page {page_num + 1}",
                     "source_id": f"{document_id}_page_{page_num + 1}",
-                    "chunk_id": f"{document_id}_page_{page_num + 1}_text"
+                    "chunk_id": f"{document_id}_page_{page_num + 1}_text",
                 }
-                
+
                 # Add any additional metadata from input
                 if metadata:
                     page_metadata.update(metadata)
@@ -245,7 +250,9 @@ class IngestDataTool(BaseTool):
                             continue
 
                         # Save embedded image
-                        image_path = self._save_image_to_folder(image, document_id, page_num, img_index + 1)
+                        image_path = self._save_image_to_folder(
+                            image, document_id, page_num, img_index + 1
+                        )
 
                         # Create mandatory metadata for embedded image
                         image_metadata = {
@@ -269,9 +276,9 @@ class IngestDataTool(BaseTool):
                             "url": file_path,
                             "title": f"{os.path.basename(file_path)} - Page {page_num + 1} - Image {img_index + 1}",
                             "source_id": f"{document_id}_page_{page_num + 1}_image_{img_index + 1}",
-                            "chunk_id": f"{document_id}_page_{page_num + 1}_image_{img_index + 1}"
+                            "chunk_id": f"{document_id}_page_{page_num + 1}_image_{img_index + 1}",
                         }
-                        
+
                         # Add any additional metadata from input
                         if metadata:
                             image_metadata.update(metadata)
@@ -287,8 +294,7 @@ class IngestDataTool(BaseTool):
 
                         try:
                             response = client.models.generate_content(
-                                model='gemini-2.0-flash',
-                                contents=[prompt, image]
+                                model="gemini-2.0-flash", contents=[prompt, image]
                             )
                             description = response.text if response.text else ""
                             description = description.strip()

@@ -7,14 +7,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import dotenv
-from crewai import Agent, Crew, Process, Task, LLM
+from crewai import LLM, Agent, Crew, Process, Task
 
 from tools.rag_ingest import IngestDataTool
 from tools.rag_query import AnswerQueryTool
 
 dotenv.load_dotenv()
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini/gemini-2.0-flash"
 TEMPERATURE = 0.3
 
 
@@ -77,15 +77,15 @@ def display_formatted_answer(answer: str, sources: Optional[List[Dict]] = None) 
     for i, source in enumerate(sources):
         # Get the path from either pdf_path or path
         path = source.get("pdf_path", source.get("path", "Unknown"))
-        
+
         # Get the page from either page_number or page
         page = source.get("page_number", source.get("page"))
-        
+
         # Get image path from either page_image, embedded_image, or image_path
-        image_path = source.get("page_image", 
-                             source.get("embedded_image", 
-                                     source.get("image_path")))
-                                     
+        image_path = source.get(
+            "page_image", source.get("embedded_image", source.get("image_path"))
+        )
+
         content_type = source.get("content_type", "text")
         snippet = source.get("snippet", "")
 
@@ -101,10 +101,10 @@ def display_formatted_answer(answer: str, sources: Optional[List[Dict]] = None) 
         page_info = f" (Page: {page})" if page is not None else ""
         print(f"    Source: {path}{page_info}")
         print(f"    Type: {content_type}")
-        
+
         if content_type == "image" and image_path:
             print(f"    Image: {image_path}")
-            
+
         print("    " + "-" * (width - 4))
 
     print("\n" + "=" * width)
@@ -121,6 +121,8 @@ def check_api_key():
 def create_tools():
     ingest_tool = IngestDataTool()
     query_tool = AnswerQueryTool()
+    # The HyDE rewriter and reranker tools are now initialized in the AnswerQueryTool
+    # This ensures they are properly integrated into the RAG pipeline
     return ingest_tool, query_tool
 
 
@@ -142,7 +144,10 @@ def create_agents(ingest_tool, query_tool, llm):
         goal="Answer questions accurately using the knowledge base",
         backstory="Expert in information retrieval and question answering. "
         "You search through a knowledge base to find relevant information "
-        "and generate comprehensive answers with source citations.",
+        "and generate comprehensive answers with source citations. "
+        "You are skilled at properly formatting data for tools and always ensure that JSON "
+        "strings are correctly formatted when passing to tools. You always serialize request_json as "
+        "a valid JSON string before passing it to tools.",
         verbose=True,
         allow_delegation=False,
         tools=[query_tool],
@@ -192,7 +197,7 @@ def process_query(query: str, query_agent: Agent) -> Dict:
     query_json = json.dumps(query_request)
 
     query_task = Task(
-        description=f"Answer this question: '{query}'. Use the following JSON input: {query_json}",
+        description=f"Answer this question: '{query}'. Use the following JSON input as a STRING when calling the Answer Query Tool: {query_json}. IMPORTANT: Make sure to properly JSON-encode the request_json parameter as a string when using the tool.",
         expected_output="JSON response with query results including answers and sources.",
         agent=query_agent,
     )
@@ -229,15 +234,22 @@ def interactive_mode():
         check_api_key()
 
         llm = LLM(
-            model='gemini/gemini-2.0-flash',
-            temprature=0.5,
-            api_key=os.getenv("GEMINI_API_KEY", "")
+            model=GEMINI_MODEL,
+            temperature=0.5,
+            api_key=os.getenv("GEMINI_API_KEY", ""),
         )
 
         ingest_tool, query_tool = create_tools()
 
         ingestion_agent, query_agent = create_agents(ingest_tool, query_tool, llm)
         print("Initialization complete.")
+
+        # Print information about the advanced RAG features
+        print("\nAdvanced RAG features enabled:")
+        print(
+            "- HyDE (Hypothetical Document Embeddings): Improves retrieval by expanding queries"
+        )
+        print("- Cross-encoder Reranking: Improves result relevance ordering")
 
     except Exception as e:
         print(f"FATAL: Failed to initialize components: {e}")
